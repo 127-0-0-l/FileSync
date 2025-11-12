@@ -7,11 +7,13 @@
         private Queue<DiskTask> _diskTasks = new Queue<DiskTask>();
         private List<string> _failedToDelete = new List<string>();
         private List<string> _failedToCopy = new List<string>();
+        private long _commonSize;
 
         public FileSynchronizer(string sourcePath, string destinationPath)
         {
             _sourceDirectory = new DirectoryInfo(sourcePath);
             _destinationDirectory = new DirectoryInfo(destinationPath);
+            _commonSize = 0;
         }
 
         public void Synchronize()
@@ -65,6 +67,7 @@
                         TaskType = DiskTaskType.Delete,
                         DestinationPath = directory.FullName
                     });
+                    _commonSize++;
                 }
             }
 
@@ -90,6 +93,7 @@
                         DestinationPath = file.FullName,
                         IsFile = true
                     });
+                    _commonSize++;
                 }
             }
 
@@ -106,23 +110,26 @@
                         DestinationPath = destFile.FullName,
                         IsFile = true
                     });
+                    _commonSize += file.Length;
                 }
             }
         }
 
         private void SyncDirectories()
         {
+            long processed = 0;
+
             int dtCount = _diskTasks.Count;
             for (int i = 0; i < dtCount; i++)
             {
-                int percantage = (i * 100) / dtCount;
                 DiskTask item = _diskTasks.Dequeue();
+                int percantage = (int)((processed * 100) / _commonSize);
 
                 switch (item.TaskType)
                 {
                     case DiskTaskType.Delete:
                         ConsoleManager.RewriteLinesWithProgress(
-                            new string[] {$"delete {item.DestinationPath}"}, percantage);
+                            new string[] { $"delete {item.DestinationPath}" }, percantage);
 
                         try
                         {
@@ -143,7 +150,10 @@
                                 _failedToDelete.Add(item.DestinationPath);
                             }
                         }
+
+                        processed++;
                         break;
+
                     case DiskTaskType.Copy:
                         ConsoleManager.RewriteLinesWithProgress(
                             new string[] { $"copy {item.SourcePath}" }, percantage);
@@ -151,7 +161,29 @@
                         if (item.IsFile)
                             try
                             {
-                                File.Copy(item.SourcePath, item.DestinationPath);
+                                using (FileStream sourceStream = new FileStream(item.SourcePath, FileMode.Open, FileAccess.Read))
+                                using (FileStream destinationStream = new FileStream(item.DestinationPath, FileMode.Create, FileAccess.Write))
+                                {
+                                    int kb = 4;
+                                    byte[] buffer = new byte[1024 * kb];
+                                    int bytesRead;
+
+                                    int counter = 0;
+                                    int counterMax = 1024 / kb;
+                                    while ((bytesRead = sourceStream.Read(buffer, 0, buffer.Length)) > 0)
+                                    {
+                                        destinationStream.Write(buffer, 0, bytesRead);
+                                        processed += bytesRead;
+                                        counter++;
+                                        if (counter == counterMax)
+                                        {
+                                            percantage = (int)((processed * 100) / _commonSize);
+                                            ConsoleManager.RewriteLinesWithProgress(
+                                                new string[] { $"copy {item.SourcePath}" }, percantage);
+                                            counter = 0;
+                                        }
+                                    }
+                                }
                             }
                             catch
                             {
