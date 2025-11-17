@@ -35,7 +35,7 @@
             });
             Console.WriteLine($"\n{filesToCopy} filesToCopy");
 
-            Console.WriteLine("\nsyncing...");
+            Console.WriteLine("\n\nsyncing...");
             SyncDirectories();
 
             if (_failedToDelete.Count > 0)
@@ -129,7 +129,8 @@
                 {
                     case DiskTaskType.Delete:
                         ConsoleManager.RewriteLinesWithProgress(
-                            new string[] { $"delete {item.DestinationPath}" }, percantage);
+                            new string[] { $"delete {item.DestinationPath}", GetProgressInfoString(processed) },
+                            percantage);
 
                         try
                         {
@@ -156,7 +157,8 @@
 
                     case DiskTaskType.Copy:
                         ConsoleManager.RewriteLinesWithProgress(
-                            new string[] { $"copy {item.SourcePath}" }, percantage);
+                            new string[] { $"copy {item.SourcePath}", GetProgressInfoString(processed) },
+                            percantage);
 
                         if (item.IsFile)
                             try
@@ -179,7 +181,8 @@
                                         {
                                             percantage = (int)((processed * 100) / _commonSize);
                                             ConsoleManager.RewriteLinesWithProgress(
-                                                new string[] { $"copy {item.SourcePath}" }, percantage);
+                                                new string[] { $"copy {item.SourcePath}", GetProgressInfoString(processed) },
+                                                percantage);
                                             counter = 0;
                                         }
                                     }
@@ -221,5 +224,8 @@
         }
 
         private bool IsPathsValid() => _sourceDirectory.Exists && _destinationDirectory.Exists;
+
+        private string GetProgressInfoString(long processed) =>
+            $"{processed / 1024 / 1024} / {_commonSize / 1024 / 1024} MB";
     }
 }

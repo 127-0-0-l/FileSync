@@ -68,7 +68,7 @@ namespace FileSync
             for (int i = 0; i < filledCells; i++)
                 result.Append('#');
             for (int i = 0; i < pbLength - filledCells; i++)
-                result.Append(' ');
+                result.Append('-');
 
             result.Append(ending);
 
