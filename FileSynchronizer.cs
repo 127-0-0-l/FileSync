@@ -5,6 +5,7 @@
         private readonly DirectoryInfo _sourceDirectory;
         private readonly DirectoryInfo _destinationDirectory;
         private Queue<DiskTask> _diskTasks = new Queue<DiskTask>();
+        private List<string> _failedToScan = new List<string>();
         private List<string> _failedToDelete = new List<string>();
         private List<string> _failedToCopy = new List<string>();
         private long _commonSize;
@@ -38,6 +39,13 @@
             Console.WriteLine("\n\nsyncing...");
             SyncDirectories();
 
+            if (_failedToScan.Count > 0)
+            {
+                Console.WriteLine("\nfailed to scan:");
+                foreach (var item in _failedToScan)
+                    Console.WriteLine(item);
+            }
+
             if (_failedToDelete.Count > 0)
             {
                 Console.WriteLine("\nfailed to delete:");
@@ -55,63 +63,60 @@
 
         private void ScanDirectories(DirectoryInfo source, DirectoryInfo destination)
         {
-            ConsoleManager.RewriteLines(new string[] { source.FullName });
-
-            // delete directories
-            foreach (var directory in destination.GetDirectories())
+            try
             {
-                if (!Directory.Exists(Path.Combine(source.FullName, directory.Name)))
+                ConsoleManager.RewriteLines(new string[] { source.FullName });
+
+                // delete directories
+                foreach (var directory in destination.GetDirectories())
                 {
-                    _diskTasks.Enqueue(new DiskTask
+                    if (!Directory.Exists(Path.Combine(source.FullName, directory.Name)))
                     {
-                        TaskType = DiskTaskType.Delete,
-                        DestinationPath = directory.FullName
-                    });
-                    _commonSize++;
+                        EnqueueDelete(directory.FullName, false);
+                        _commonSize++;
+                    }
+                }
+
+                // create directories
+                foreach (var directory in source.GetDirectories())
+                {
+                    DirectoryInfo destDirectory = new DirectoryInfo(Path.Combine(destination.FullName, directory.Name));
+                    if (!destDirectory.Exists)
+                        destDirectory.Create();
+
+                    ScanDirectories(directory, destDirectory);
+                }
+
+                // delete files
+                foreach (var file in destination.GetFiles())
+                {
+                    FileInfo sourceFile = new FileInfo(Path.Combine(source.FullName, file.Name));
+                    if (!sourceFile.Exists)
+                    {
+                        EnqueueDelete(file.FullName, true);
+                        _commonSize++;
+                    }
+                    else if (sourceFile.LastWriteTimeUtc != file.LastWriteTimeUtc)
+                    {
+                        EnqueueCopy(sourceFile, file);
+                        _commonSize += sourceFile.Length;
+                    }
+                }
+
+                // copy files
+                foreach (var file in source.GetFiles())
+                {
+                    FileInfo destFile = new FileInfo(Path.Combine(destination.FullName, file.Name));
+                    if (!destFile.Exists)
+                    {
+                        EnqueueCopy(file, destFile);
+                        _commonSize += file.Length;
+                    }
                 }
             }
-
-            // create directories
-            foreach (var directory in source.GetDirectories())
+            catch
             {
-                DirectoryInfo destDirectory = new DirectoryInfo(Path.Combine(destination.FullName, directory.Name));
-                if (!destDirectory.Exists)
-                    destDirectory.Create();
-
-                ScanDirectories(directory, destDirectory);
-            }
-
-            // delete files
-            foreach (var file in destination.GetFiles())
-            {
-                FileInfo sourceFile = new FileInfo(Path.Combine(source.FullName, file.Name));
-                if (!sourceFile.Exists || sourceFile.LastWriteTimeUtc != file.LastWriteTimeUtc)
-                {
-                    _diskTasks.Enqueue(new DiskTask
-                    {
-                        TaskType = DiskTaskType.Delete,
-                        DestinationPath = file.FullName,
-                        IsFile = true
-                    });
-                    _commonSize++;
-                }
-            }
-
-            // copy files
-            foreach (var file in source.GetFiles())
-            {
-                FileInfo destFile = new FileInfo(Path.Combine(destination.FullName, file.Name));
-                if (!destFile.Exists)
-                {
-                    _diskTasks.Enqueue(new DiskTask
-                    {
-                        TaskType = DiskTaskType.Copy,
-                        SourcePath = file.FullName,
-                        DestinationPath = destFile.FullName,
-                        IsFile = true
-                    });
-                    _commonSize += file.Length;
-                }
+                _failedToScan.Add($"(source: {source}) (destination: {destination})");
             }
         }
 
@@ -187,6 +192,9 @@
                                         }
                                     }
                                 }
+
+                                File.SetLastWriteTimeUtc(item.DestinationPath, File.GetLastWriteTimeUtc(item.SourcePath));
+                                File.SetCreationTimeUtc(item.DestinationPath, File.GetCreationTimeUtc(item.SourcePath));
                             }
                             catch
                             {
@@ -227,5 +235,26 @@
 
         private string GetProgressInfoString(long processed) =>
             $"{processed / 1024 / 1024} / {_commonSize / 1024 / 1024} MB";
+
+        private void EnqueueDelete(string path, bool isFile)
+        {
+            _diskTasks.Enqueue(new DiskTask
+            {
+                TaskType = DiskTaskType.Delete,
+                DestinationPath = path,
+                IsFile = isFile
+            });
+        }
+
+        private void EnqueueCopy(FileInfo source, FileInfo destination)
+        {
+            _diskTasks.Enqueue(new DiskTask
+            {
+                TaskType = DiskTaskType.Copy,
+                SourcePath = source.FullName,
+                DestinationPath = destination.FullName,
+                IsFile = true
+            });
+        }
     }
 }
