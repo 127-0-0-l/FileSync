@@ -98,6 +98,8 @@
                     }
                     else if (sourceFile.LastWriteTimeUtc != file.LastWriteTimeUtc)
                     {
+                        EnqueueDelete(file.FullName, true);
+                        _commonSize++;
                         EnqueueCopy(sourceFile, file);
                         _commonSize += sourceFile.Length;
                     }
