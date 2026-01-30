@@ -1,4 +1,6 @@
-﻿namespace FileSync
+﻿using Serilog;
+
+namespace FileSync
 {
     internal class FileSynchronizer
     {
@@ -15,10 +17,13 @@
             _sourceDirectory = new DirectoryInfo(sourcePath);
             _destinationDirectory = new DirectoryInfo(destinationPath);
             _commonSize = 0;
+            Log.Information($"create FileSynchronizer(sourcePath: {sourcePath}, destinationPath: {destinationPath})");
         }
 
         public void Synchronize()
         {
+            Log.Information($"start synchronizing {_sourceDirectory} to {_destinationDirectory}");
+
             if (!IsPathsValid())
                 throw new Exception("invalid path");
 
@@ -63,6 +68,8 @@
 
         private void ScanDirectories(DirectoryInfo source, DirectoryInfo destination)
         {
+            Log.Information($"scan {source} -> {destination}");
+
             try
             {
                 ConsoleManager.RewriteLines(new string[] { source.FullName });
@@ -118,7 +125,9 @@
             }
             catch
             {
-                _failedToScan.Add($"(source: {source}) (destination: {destination})");
+                string directories = $"(source: {source}) (destination: {destination})";
+                _failedToScan.Add(directories);
+                Log.Information("failed to scan " + directories);
             }
         }
 
@@ -131,6 +140,8 @@
             {
                 DiskTask item = _diskTasks.Dequeue();
                 int percantage = (int)((processed * 100) / _commonSize);
+
+                Log.Information($"{item.TaskType} {item.SourcePath} -> {item.DestinationPath}");
 
                 switch (item.TaskType)
                 {
@@ -156,6 +167,7 @@
                             catch
                             {
                                 _failedToDelete.Add(item.DestinationPath);
+                                Log.Information($"failed to delete {item.DestinationPath}");
                             }
                         }
 
@@ -163,6 +175,7 @@
                         break;
 
                     case DiskTaskType.Copy:
+                        Log.Information($"copy {item.SourcePath}");
                         ConsoleManager.RewriteLinesWithProgress(
                             new string[] { $"copy {item.SourcePath}", GetProgressInfoString(processed) },
                             percantage);
@@ -201,6 +214,7 @@
                             catch
                             {
                                 _failedToCopy.Add(item.SourcePath);
+                                Log.Information($"failed to copy {item.SourcePath}");
                             }
                         break;
                     default:
@@ -208,6 +222,7 @@
                 }
             }
 
+            Log.Information("syncing complete");
             ConsoleManager.RewriteLinesWithProgress(new string[] { "", "syncing complete" }, 100);
             Console.WriteLine();
         }

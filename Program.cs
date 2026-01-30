@@ -1,4 +1,6 @@
-﻿namespace FileSync
+﻿using Serilog;
+
+namespace FileSync
 {
     internal class Program
     {
@@ -8,6 +10,10 @@
             {
                 try
                 {
+                    Log.Logger = new LoggerConfiguration()
+                        .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
+                        .CreateLogger();
+
                     string sourcePath = args[0];
                     string destinationPath = args[1];
 
@@ -18,10 +24,17 @@
                 {
                     Console.WriteLine(ex.Message);
                 }
+                finally
+                {
+                    Log.CloseAndFlush();
+                }
             }
             else
             {
-                Console.WriteLine("wrong arguments");
+                string warnMessage = "wrong arguments";
+                Log.Warning(warnMessage);
+                Console.WriteLine(warnMessage);
+
             }
         }
     }
