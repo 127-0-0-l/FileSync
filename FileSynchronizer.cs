@@ -41,6 +41,13 @@ namespace FileSync
             });
             Console.WriteLine($"\n{filesToCopy} filesToCopy");
 
+            bool confirmed = false;
+            if (_diskTasks.Count > 0)
+                confirmed = GetProceedConfirmation();
+
+            if (!confirmed)
+                return;
+
             Console.WriteLine("\n\nsyncing...");
             SyncDirectories();
 
@@ -272,6 +279,31 @@ namespace FileSync
                 DestinationPath = destination.FullName,
                 IsFile = true
             });
+        }
+
+        private bool GetProceedConfirmation()
+        {
+            Log.Information("proceed confirmation");
+            while (true)
+            {
+                Console.WriteLine("\nDo you wish to proceed?\ny - yes\nn - no\ns - show files");
+                var key = Console.ReadKey();
+                Log.Information("user input: " + key.Key);
+
+                switch (key.Key)
+                {
+                    case ConsoleKey.Y:
+                        return true;
+                    case ConsoleKey.N:
+                        return false;
+                    case ConsoleKey.S:
+                        foreach (var task in _diskTasks)
+                            Console.WriteLine($"{task.TaskType} {task.SourcePath} {task.DestinationPath}");
+                        break;
+                    default:
+                        break;
+                }
+            }
         }
     }
 }
