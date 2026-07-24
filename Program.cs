@@ -1,8 +1,10 @@
-﻿using Serilog;
+﻿using FileSync.Interfaces;
+using FileSync.Services;
+using Serilog;
 
 namespace FileSync
 {
-    internal class Program
+    public class Program
     {
         static void Main(string[] args)
         {
@@ -17,12 +19,14 @@ namespace FileSync
                     string sourcePath = args[0];
                     string destinationPath = args[1];
 
-                    FileSynchronizer fs = new FileSynchronizer(sourcePath, destinationPath);
+                    IOutputService outputService = new LoggingOutputServiceDecorator(new ConsoleOutputService());
+                    FileSynchronizer fs = new FileSynchronizer(outputService, sourcePath, destinationPath);
                     fs.Synchronize();
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.Message);
+                    Log.Error(ex.Message);
                 }
                 finally
                 {
@@ -34,7 +38,6 @@ namespace FileSync
                 string warnMessage = "wrong arguments";
                 Log.Warning(warnMessage);
                 Console.WriteLine(warnMessage);
-
             }
         }
     }

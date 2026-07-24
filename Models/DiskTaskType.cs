@@ -1,4 +1,4 @@
-﻿namespace FileSync
+﻿namespace FileSync.Models
 {
     internal enum DiskTaskType
     {

@@ -1,13 +1,48 @@
-﻿using System.Text;
+﻿using FileSync.Interfaces;
+using System.Text;
 
-namespace FileSync
+namespace FileSync.Services
 {
-    internal static class ConsoleManager
+    public class ConsoleOutputService : IOutputService
     {
-        private static int _consoleWidth;
-        private static int _progressBarMaxWidth = 100;
+        private int _consoleWidth;
+        private int _progressBarMaxWidth = 100;
 
-        public static void RewriteLines(string[] lines)
+        public void Write(string text)
+        {
+            CheckResize();
+            text = MakeConsoleRow(text);
+            Console.Write(text);
+        }
+
+        public void WriteLine() => Console.WriteLine();
+
+        public void WriteLine(string line)
+        {
+            CheckResize();
+            line = MakeConsoleRow(line);
+            Console.WriteLine(line);
+        }
+
+        public void WriteLines(string[] lines)
+        {
+            if (lines.Length < 1)
+                return;
+
+            CheckResize();
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                lines[i] = MakeConsoleRow(lines[i]);
+
+                if (i == lines.Length - 1)
+                    Console.Write(lines[i]);
+                else
+                    Console.WriteLine(lines[i]);
+            }
+        }
+
+        public void RewriteLines(string[] lines)
         {
             if (lines.Length < 1)
                 return;
@@ -31,7 +66,7 @@ namespace FileSync
             catch { }
         }
 
-        public static void RewriteLinesWithProgress(string[] lines, int percentage)
+        public void RewriteLinesWithProgress(string[] lines, int percentage)
         {
             if (lines.Length < 1 || percentage < 0 || percentage > 100)
                 return;
@@ -53,7 +88,7 @@ namespace FileSync
             catch { }
         }
 
-        private static string GetProgressBar(int percentage)
+        private string GetProgressBar(int percentage)
         {
             string begining = "[";
             string ending = $"] {percentage}%";
@@ -64,7 +99,7 @@ namespace FileSync
             StringBuilder result = new StringBuilder();
             result.Append(begining);
 
-            int filledCells = (pbLength * percentage) / 100;
+            int filledCells = pbLength * percentage / 100;
             for (int i = 0; i < filledCells; i++)
                 result.Append('#');
             for (int i = 0; i < pbLength - filledCells; i++)
@@ -75,13 +110,13 @@ namespace FileSync
             return result.ToString();
         }
 
-        private static string MakeConsoleRow(string str)
+        private string MakeConsoleRow(string str)
         {
             char[] newStr = new char[_consoleWidth];
             for (int i = 0; i < _consoleWidth; i++)
             {
                 if (i < str.Length)
-                    newStr[i] = (i >= _consoleWidth - 3) && (str.Length > _consoleWidth) ? '.' : str[i];
+                    newStr[i] = i >= _consoleWidth - 3 && str.Length > _consoleWidth ? '.' : str[i];
                 else
                     newStr[i] = ' ';
             }
@@ -89,7 +124,7 @@ namespace FileSync
             return new string(newStr);
         }
 
-        private static void CheckResize()
+        private void CheckResize()
         {
             int width = Console.WindowWidth;
 

@@ -1,9 +1,14 @@
 ﻿using Serilog;
+using FileSync.Models;
+using FileSync.Interfaces;
+using FileSync.Extensions;
+using Blake3;
 
 namespace FileSync
 {
-    internal class FileSynchronizer
+    public class FileSynchronizer
     {
+        private readonly IOutputService _outputService;
         private readonly DirectoryInfo _sourceDirectory;
         private readonly DirectoryInfo _destinationDirectory;
         private Queue<DiskTask> _diskTasks = new Queue<DiskTask>();
@@ -12,8 +17,10 @@ namespace FileSync
         private List<string> _failedToCopy = new List<string>();
         private long _commonSize;
 
-        public FileSynchronizer(string sourcePath, string destinationPath)
+        public FileSynchronizer(IOutputService outputService,
+            string sourcePath, string destinationPath)
         {
+            _outputService = outputService;
             _sourceDirectory = new DirectoryInfo(sourcePath);
             _destinationDirectory = new DirectoryInfo(destinationPath);
             _commonSize = 0;
@@ -27,19 +34,19 @@ namespace FileSync
             if (!IsPathsValid())
                 throw new Exception("invalid path");
 
-            Console.WriteLine("scanning...");
+            _outputService.WriteLine("scanning...");
             ScanDirectories(_sourceDirectory, _destinationDirectory);
 
             int dirToDelete = _diskTasks.Count(t => !t.IsFile && t.TaskType == DiskTaskType.Delete);
             int filesToDelete = _diskTasks.Count(t => t.IsFile && t.TaskType == DiskTaskType.Delete);
             int filesToCopy = _diskTasks.Count(t => t.IsFile && t.TaskType == DiskTaskType.Copy);
 
-            ConsoleManager.RewriteLines(new string[]
-            {
+            _outputService.RewriteLines(
+            [
                 "scanning complete",
                 $"{dirToDelete} directories {filesToDelete} files to delete"
-            });
-            Console.WriteLine($"\n{filesToCopy} filesToCopy");
+            ]);
+            _outputService.WriteLine($"\n{filesToCopy} filesToCopy");
 
             bool confirmed = false;
             if (_diskTasks.Count > 0)
@@ -48,28 +55,28 @@ namespace FileSync
             if (!confirmed)
                 return;
 
-            Console.WriteLine("\n\nsyncing...");
+            _outputService.WriteLine("\n\nsyncing...");
             SyncDirectories();
 
             if (_failedToScan.Count > 0)
             {
-                Console.WriteLine("\nfailed to scan:");
+                _outputService.WriteLine("\nfailed to scan:");
                 foreach (var item in _failedToScan)
-                    Console.WriteLine(item);
+                    _outputService.WriteLine(item);
             }
 
             if (_failedToDelete.Count > 0)
             {
-                Console.WriteLine("\nfailed to delete:");
+                _outputService.WriteLine("\nfailed to delete:");
                 foreach (var item in _failedToDelete)
-                    Console.WriteLine(item);
+                    _outputService.WriteLine(item);
             }
 
             if (_failedToCopy.Count > 0)
             {
-                Console.WriteLine("\nfailed to copy:");
+                _outputService.WriteLine("\nfailed to copy:");
                 foreach (var item in _failedToCopy)
-                    Console.WriteLine(item);
+                    _outputService.WriteLine(item);
             }
         }
 
@@ -79,7 +86,7 @@ namespace FileSync
 
             try
             {
-                ConsoleManager.RewriteLines(new string[] { source.FullName });
+                _outputService.RewriteLines([source.FullName]);
 
                 // delete directories
                 foreach (var directory in destination.GetDirectories())
@@ -112,10 +119,27 @@ namespace FileSync
                     }
                     else if (sourceFile.LastWriteTimeUtc != file.LastWriteTimeUtc)
                     {
-                        EnqueueDelete(file.FullName, true);
-                        _commonSize++;
-                        EnqueueCopy(sourceFile, file);
-                        _commonSize += sourceFile.Length;
+                        DateTime scrTime = sourceFile.LastWriteTimeUtc;
+                        DateTime dstTime = file.LastWriteTimeUtc;
+                        Hash srcHash = sourceFile.GetBlake3Hash();
+                        Hash dstHash = file.GetBlake3Hash();
+
+                        Log.Information("different write time:");
+                        Log.Information("\t{File} - {Time} - {Hash}", sourceFile.FullName, scrTime, srcHash);
+                        Log.Information("\t{File} - {Time} - {Hash}", file.FullName, dstTime, dstHash);
+
+                        if (scrTime.Date == dstTime.Date && srcHash == dstHash)
+                        {
+                            Log.Information("changing destination file time");
+                            file.LastWriteTimeUtc = sourceFile.LastWriteTimeUtc;
+                        }
+                        else
+                        {
+                            EnqueueDelete(file.FullName, true);
+                            _commonSize++;
+                            EnqueueCopy(sourceFile, file);
+                            _commonSize += sourceFile.Length;
+                        }
                     }
                 }
 
@@ -153,8 +177,8 @@ namespace FileSync
                 switch (item.TaskType)
                 {
                     case DiskTaskType.Delete:
-                        ConsoleManager.RewriteLinesWithProgress(
-                            new string[] { $"delete {item.DestinationPath}", GetProgressInfoString(processed) },
+                        _outputService.RewriteLinesWithProgress(
+                            [$"delete {item.DestinationPath}", GetProgressInfoString(processed)],
                             percantage);
 
                         try
@@ -183,8 +207,8 @@ namespace FileSync
 
                     case DiskTaskType.Copy:
                         Log.Information($"copy {item.SourcePath}");
-                        ConsoleManager.RewriteLinesWithProgress(
-                            new string[] { $"copy {item.SourcePath}", GetProgressInfoString(processed) },
+                        _outputService.RewriteLinesWithProgress(
+                            [$"copy {item.SourcePath}", GetProgressInfoString(processed)],
                             percantage);
 
                         if (item.IsFile)
@@ -207,8 +231,8 @@ namespace FileSync
                                         if (counter == counterMax)
                                         {
                                             percantage = (int)((processed * 100) / _commonSize);
-                                            ConsoleManager.RewriteLinesWithProgress(
-                                                new string[] { $"copy {item.SourcePath}", GetProgressInfoString(processed) },
+                                            _outputService.RewriteLinesWithProgress(
+                                                [$"copy {item.SourcePath}", GetProgressInfoString(processed)],
                                                 percantage);
                                             counter = 0;
                                         }
@@ -230,8 +254,8 @@ namespace FileSync
             }
 
             Log.Information("syncing complete");
-            ConsoleManager.RewriteLinesWithProgress(new string[] { "", "syncing complete" }, 100);
-            Console.WriteLine();
+            _outputService.RewriteLinesWithProgress(["", "syncing complete"], 100);
+            _outputService.WriteLine();
         }
 
         // work only on Windows
@@ -286,7 +310,7 @@ namespace FileSync
             Log.Information("proceed confirmation");
             while (true)
             {
-                Console.WriteLine("\nDo you wish to proceed?\ny - yes\nn - no\ns - show files");
+                _outputService.WriteLine("\nDo you wish to proceed?\ny - yes\nn - no\ns - show files");
                 var key = Console.ReadKey();
                 Log.Information("user input: " + key.Key);
 
@@ -298,7 +322,7 @@ namespace FileSync
                         return false;
                     case ConsoleKey.S:
                         foreach (var task in _diskTasks)
-                            Console.WriteLine($"{task.TaskType} {task.SourcePath} {task.DestinationPath}");
+                            _outputService.WriteLine($"{task.TaskType} {task.SourcePath} {task.DestinationPath}");
                         break;
                     default:
                         break;
