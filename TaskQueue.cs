@@ -1,56 +1,59 @@
-﻿using FileSync.Interfaces;
-using System;
+﻿using Serilog;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FileSync
 {
     public static class TaskQueue
     {
-        private static readonly BlockingCollection<Action> queue = new();
-        private static Thread? worker;
-        private static IOutputService outputService;
-        private static readonly object locker = new object();
+        private static readonly BlockingCollection<Action> _queue = new();
+        private static Thread? _worker;
+        private static readonly object _locker = new object();
 
-        public static void Start(IOutputService outputService)
+        public static void Start()
         {
-            lock (locker)
+            lock (_locker)
             {
-                if (worker != null) return;
+                if (_worker != null) return;
 
-                TaskQueue.outputService = outputService;
-
-                worker = new Thread(ProcessQueue)
+                _worker = new Thread(ProcessQueue)
                 {
                     IsBackground = true,
                     Name = "TaskQueueWorker"
                 };
-                worker.Start();
+                _worker.Start();
             }
         }
 
-        public static void Enqueue(Action task)
+        public static bool Enqueue(Action task)
         {
-            if (!queue.IsAddingCompleted)
-                queue.Add(task);
+            if (!_queue.IsAddingCompleted)
+            {
+                _queue.Add(task);
+                return true;
+            }
+            else
+            {
+                Log.Error("TaskQueue: failed to add task. adding to queue completed");
+                return false;
+            }
         }
 
         public static Task StopAsync()
         {
-            queue.CompleteAdding();
+            if (!_queue.IsAddingCompleted)
+                _queue.CompleteAdding();
 
-            if (worker == null)
+            if (_worker == null)
                 return Task.CompletedTask;
 
-            return Task.Run(() => worker.Join());
+            return Task.Run(() => _worker.Join());
         }
+
+        public static int Count() => _queue.Count;
 
         private static void ProcessQueue()
         {
-            foreach (var task in queue.GetConsumingEnumerable())
+            foreach (var task in _queue.GetConsumingEnumerable())
             {
                 try
                 {
@@ -58,7 +61,7 @@ namespace FileSync
                 }
                 catch (Exception ex)
                 {
-                    outputService.WriteLine(ex.Message);
+                    Log.Error(ex, "TaskQueue: task failed");
                 }
             }
         }

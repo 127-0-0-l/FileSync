@@ -6,7 +6,7 @@ namespace FileSync
 {
     public class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             if (args.Length == 2)
             {
@@ -19,7 +19,12 @@ namespace FileSync
                     string sourcePath = args[0];
                     string destinationPath = args[1];
 
-                    IOutputService outputService = new LoggingOutputServiceDecorator(new ConsoleOutputService());
+                    IOutputService outputService =
+                        new SynchroniusOutputServiceDecorator(
+                            new LoggingOutputServiceDecorator(
+                                new ConsoleOutputService()));
+
+                    TaskQueue.Start();
                     FileSynchronizer fs = new FileSynchronizer(outputService, sourcePath, destinationPath);
                     fs.Synchronize();
                 }
@@ -30,6 +35,7 @@ namespace FileSync
                 }
                 finally
                 {
+                    await TaskQueue.StopAsync();
                     Log.CloseAndFlush();
                 }
             }
